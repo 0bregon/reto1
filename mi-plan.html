@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es-PA">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E3A5B">
+  <title>Mi plan · CopagoPA</title>
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+  <header id="cabecera"></header>
+
+  <main id="principal" class="contenedor">
+    <div class="cabeza-pagina">
+      <h1>Mi plan de seguro</h1>
+      <p>Identifica tu plan una vez y lo usaremos en el asistente y en el comparador.</p>
+    </div>
+
+    <div class="dos-col">
+      <section class="panel" aria-labelledby="t-ident">
+        <h2 id="t-ident" style="font-size:1.25rem">Identificar mi plan</h2>
+        <div class="pestanas" role="tablist" aria-label="Forma de identificación">
+          <button role="tab" id="tab-ced" aria-selected="true" aria-controls="pan-ced">Con cédula</button>
+          <button role="tab" id="tab-man" aria-selected="false" aria-controls="pan-man" tabindex="-1">Manualmente</button>
+        </div>
+
+        <form id="pan-ced" role="tabpanel" aria-labelledby="tab-ced" novalidate>
+          <div class="campo">
+            <label for="cedula">Número de cédula</label>
+            <input type="text" id="cedula" inputmode="text" placeholder="8-845-1203" aria-describedby="ayuda-ced" autocomplete="off">
+            <small id="ayuda-ced">Formato provincia-tomo-asiento. Demostración: <span id="demo-ceds"></span></small>
+          </div>
+          <p class="error" id="error-ced" role="alert"></p>
+          <button class="btn btn--primario btn--bloque" type="submit">Buscar mi póliza</button>
+        </form>
+
+        <form id="pan-man" role="tabpanel" aria-labelledby="tab-man" hidden>
+          <div class="campo"><label for="aseg">Aseguradora</label><select id="aseg"></select></div>
+          <div class="campo"><label for="plan">Plan</label><select id="plan"></select></div>
+          <div class="campo">
+            <label for="ded">Deducible usado este año (B/.)</label>
+            <input type="number" id="ded" min="0" step="1" value="0" aria-describedby="ayuda-ded">
+            <small id="ayuda-ded">Lo encuentras en tu estado de cuenta o en la app de tu aseguradora.</small>
+          </div>
+          <div class="campo"><label for="tope">Desembolso acumulado este año (B/.)</label><input type="number" id="tope" min="0" step="1" value="0"></div>
+          <div class="campo"><label for="prov">Provincia de residencia</label><select id="prov"></select></div>
+          <label class="casilla" style="margin-bottom:1rem"><input type="checkbox" id="sinSeguro"> No tengo seguro privado</label>
+          <button class="btn btn--primario btn--bloque" type="submit">Guardar mi plan</button>
+        </form>
+      </section>
+
+      <section aria-labelledby="t-estado" aria-live="polite">
+        <h2 id="t-estado" class="sr">Estado de mi plan</h2>
+        <div id="estado"></div>
+      </section>
+    </div>
+  </main>
+
+  <footer id="pie"></footer>
+
+  <script src="js/datos.js"></script>
+  <script src="js/motor.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+  CP.montarLayout("mi-plan");
+  const $ = (id) => document.getElementById(id);
+
+  /* ---------- Pestañas accesibles (flechas izquierda/derecha) ---------- */
+  const tabs = [$("tab-ced"), $("tab-man")];
+  function activar(tab) {
+    tabs.forEach(t => {
+      const sel = t === tab;
+      t.setAttribute("aria-selected", sel);
+      t.tabIndex = sel ? 0 : -1;
+      $(t.getAttribute("aria-controls")).hidden = !sel;
+    });
+    tab.focus();
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener("click", () => activar(t));
+    t.addEventListener("keydown", e => {
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") activar(tabs[(i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length]);
+    });
+  });
+
+  /* ---------- Cédula ---------- */
+  $("demo-ceds").innerHTML = CP.pacientesDemo.map(p => `<button type="button" class="chip" style="min-height:32px;padding:.1rem .6rem;margin:.2rem .2rem 0 0" data-ced="${p.cedula}">${p.cedula}</button>`).join("");
+  $("demo-ceds").addEventListener("click", e => { if (e.target.dataset.ced) { $("cedula").value = e.target.dataset.ced; $("cedula").focus(); } });
+
+  $("pan-ced").addEventListener("submit", e => {
+    e.preventDefault();
+    const ced = $("cedula").value.trim().toUpperCase();
+    $("error-ced").textContent = "";
+    if (!/^(\d{1,2}|PE|E|N)-\d{1,4}-\d{1,6}$/.test(ced)) { $("error-ced").textContent = "Escribe la cédula con guiones, por ejemplo 8-845-1203."; $("cedula").focus(); return; }
+    const p = CP.pacientesDemo.find(x => x.cedula === ced);
+    if (!p) { $("error-ced").textContent = "No hay una póliza con esa cédula en la demostración. Prueba con uno de los ejemplos o ingresa tu plan manualmente."; return; }
+    CP.perfil.guardar({ origen: "cedula", ...p });
+    refrescar();
+  });
+
+  /* ---------- Manual ---------- */
+  const perfil0 = CP.perfil.obtener() || {};
+  CP.llenarSelect($("aseg"), CP.aseguradoras, perfil0.aseguradora);
+  CP.llenarSelect($("prov"), CP.provincias, perfil0.provincia || "panama");
+  function planes() {
+    const a = CP.aseguradoras.find(x => x.id === $("aseg").value);
+    CP.llenarSelect($("plan"), a.planes, perfil0.plan);
+  }
+  $("aseg").addEventListener("change", planes); planes();
+  $("sinSeguro").addEventListener("change", e => ["aseg", "plan", "ded", "tope"].forEach(id => $(id).disabled = e.target.checked));
+
+  $("pan-man").addEventListener("submit", e => {
+    e.preventDefault();
+    const sin = $("sinSeguro").checked;
+    CP.perfil.guardar(sin
+      ? { origen: "manual", aseguradora: null, provincia: $("prov").value }
+      : { origen: "manual", aseguradora: $("aseg").value, plan: $("plan").value,
+          dedUsado: Math.max(0, +$("ded").value || 0), topeUsado: Math.max(0, +$("tope").value || 0), provincia: $("prov").value });
+    refrescar();
+  });
+
+  /* ---------- Estado del plan ---------- */
+  function medidor(titulo, usado, total) {
+    const pct = Math.min(100, Math.round((usado / (total || 1)) * 100));
+    return `<div class="medidor">
+      <div class="medidor__cabeza"><span>${titulo}</span><span>${CP.dinero(Math.min(usado, total))} de ${CP.dinero(total)}</span></div>
+      <div class="medidor__barra" role="progressbar" aria-label="${titulo}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><div class="medidor__relleno" style="width:${pct}%"></div></div>
+    </div>`;
+  }
+
+  function refrescar() {
+    CP.montarLayout("mi-plan");
+    const p = CP.perfil.obtener();
+    const d = CP.perfil.descripcion(p);
+    if (!d) {
+      $("estado").innerHTML = `<div class="panel vacio"><p>Todavía no has identificado tu plan. Usa tu cédula o elige tu aseguradora para ver tu deducible, tus copagos y tu red de hospitales.</p></div>`;
+      return;
+    }
+    if (!d.sel) {
+      $("estado").innerHTML = `<div class="panel"><h2>Sin seguro privado</h2><p>Verás precios de lista en todos los hospitales. Si eres asegurado de la Caja de Seguro Social, también puedes atenderte en su red pública.</p><button class="btn btn--peligro" id="olvidar">Borrar mis datos</button></div>`;
+      $("olvidar").onclick = olvidar;
+      return;
+    }
+    const { aseguradora: a, plan } = d.sel;
+    const red = CP.hospitales.filter(h => a.red[h.id]).sort((x, y) => (a.red[x.id] === "preferente" ? -1 : 1) - (a.red[y.id] === "preferente" ? -1 : 1));
+    const consulta = plan.consulta.tipo === "copago"
+      ? `<tr><th scope="row">Consulta de especialista</th><td>${CP.dinero(plan.consulta.preferente)} fijo</td><td>${CP.dinero(plan.consulta.estandar)} fijo</td><td>${plan.fueraRed.cubre ? "Deducible y " + CP.pct(plan.fueraRed.coaseguro) : "Sin cobertura"}</td></tr>`
+      : `<tr><th scope="row">Consulta de especialista</th><td>Deducible y ${CP.pct(plan.coaseguro.preferente)}</td><td>Deducible y ${CP.pct(plan.coaseguro.estandar)}</td><td>${plan.fueraRed.cubre ? "Deducible y " + CP.pct(plan.fueraRed.coaseguro) : "Sin cobertura"}</td></tr>`;
+
+    $("estado").innerHTML = `
+      <div class="panel">
+        <p style="margin:0;color:var(--tinta-suave)">${CP.esc(a.nombre)}${p.poliza ? ", póliza " + CP.esc(p.poliza) : ""}</p>
+        <h2>${CP.esc(plan.nombre)}${p.nombre ? `<span style="display:block;font-size:1rem;font-family:var(--f-texto);font-weight:400;color:var(--tinta-suave)">${CP.esc(p.nombre)}, ${CP.esc(p.cedula)}</span>` : ""}</h2>
+        ${medidor("Deducible anual usado", p.dedUsado || 0, plan.deducible)}
+        ${medidor("Tope de desembolso anual usado", p.topeUsado || 0, plan.tope)}
+        <h3 style="margin-top:1.5rem">Lo que pagas por nivel de red</h3>
+        <div class="tabla-scroll"><table class="tabla-simple">
+          <thead><tr><th scope="col">Servicio</th><th scope="col">Preferente</th><th scope="col">Estándar</th><th scope="col">Fuera de red</th></tr></thead>
+          <tbody>${consulta}
+            <tr><th scope="row">Estudios y laboratorio</th><td>Deducible y ${CP.pct(plan.coaseguro.preferente)}</td><td>Deducible y ${CP.pct(plan.coaseguro.estandar)}</td><td>${plan.fueraRed.cubre ? "Se reconoce " + CP.pct(plan.fueraRed.reconoce) + " de la tarifa" : "Sin cobertura"}</td></tr>
+            <tr><th scope="row">Descuento negociado</th><td>${CP.pct(CP.descuentoRed.preferente)}</td><td>${CP.pct(CP.descuentoRed.estandar)}</td><td>No aplica</td></tr>
+          </tbody></table></div>
+        <h3 style="margin-top:1.5rem">Tu red (${red.length} hospitales)</h3>
+        <ul style="list-style:none;padding:0;margin:0">${red.map(h => {
+          const n = CP.etiquetaNivel[a.red[h.id]];
+          return `<li style="display:flex;align-items:center;gap:.75rem;padding:.5rem 0;border-bottom:1px solid var(--borde)">${CP.logo(h, 36)}<span style="flex:1"><strong>${CP.esc(h.nombre)}</strong><br><small style="color:var(--tinta-suave)">${CP.nombreProvincia(h.provincia)}</small></span><span class="nivel ${n.clase}">${n.texto}</span></li>`;
+        }).join("")}</ul>
+        <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1.5rem">
+          <a class="btn btn--primario" href="asistente.html">Ir al asistente</a>
+          <button class="btn btn--peligro" type="button" id="olvidar">Borrar mis datos</button>
+        </div>
+      </div>`;
+    $("olvidar").onclick = olvidar;
+  }
+
+  function olvidar() {
+    if (!confirm("¿Borrar el plan guardado en este dispositivo?")) return;
+    CP.store.borrar(); refrescar();
+  }
+
+  refrescar();
+  </script>
+</body>
+</html>

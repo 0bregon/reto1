@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es-PA">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E3A5B">
+  <title>Hospitales y clínicas · CopagoPA</title>
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+  <header id="cabecera"></header>
+
+  <main id="principal" class="contenedor">
+    <div class="cabeza-pagina">
+      <h1>Hospitales y clínicas</h1>
+      <p>Encuentra dónde atenderte y si está en la red de tu plan.</p>
+    </div>
+
+    <form class="panel" id="filtros" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 1rem;margin-bottom:1.25rem" role="search" aria-label="Filtrar hospitales">
+      <div class="campo"><label for="q">Buscar por nombre</label><input type="search" id="q" placeholder="Ej. Barú"></div>
+      <div class="campo"><label for="prov">Provincia</label><select id="prov"></select></div>
+      <div class="campo"><label for="esp">Especialidad</label><select id="esp"></select></div>
+      <div class="campo" style="align-self:end"><label class="casilla"><input type="checkbox" id="soloRed"> Solo mi red</label></div>
+    </form>
+
+    <p id="conteo" aria-live="polite" style="color:var(--tinta-suave)"></p>
+    <div class="rejilla-hosp" id="lista"></div>
+  </main>
+
+  <footer id="pie"></footer>
+
+  <script src="js/datos.js"></script>
+  <script src="js/motor.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+  CP.montarLayout("hospitales");
+  const $ = (id) => document.getElementById(id);
+  const perfil = CP.perfil.obtener();
+  const d = CP.perfil.descripcion(perfil);
+  const aseg = d && d.sel ? d.sel.aseguradora : null;
+
+  CP.llenarSelect($("prov"), CP.provincias, "", "Todas");
+  CP.llenarSelect($("esp"), CP.especialidades, "", "Todas");
+  if (!aseg) { $("soloRed").disabled = true; $("soloRed").parentElement.title = "Identifica tu plan para usar este filtro"; }
+
+  function tarjeta(h) {
+    const nivel = aseg ? CP.etiquetaNivel[CP.motor.nivelRed(aseg, h.id)] : null;
+    const osm = `https://www.openstreetmap.org/?mlat=${h.lat}&mlon=${h.lon}#map=16/${h.lat}/${h.lon}`;
+    return `<article class="hosp" id="${h.id}">
+      <div class="hosp__franja" style="background:${h.logo.c1}"></div>
+      <div class="hosp__cuerpo">
+        <div class="hosp__cab">${CP.logo(h, 56)}
+          <div><h3>${CP.esc(h.nombre)}</h3><p>${h.tipo}, ${CP.nombreProvincia(h.provincia)}</p></div>
+        </div>
+        ${nivel ? `<p style="margin:0"><span class="nivel ${nivel.clase}">${nivel.texto}</span></p>` : ""}
+        <dl>
+          <dt>Dirección</dt><dd>${CP.esc(h.direccion)}</dd>
+          <dt>Horario</dt><dd>${CP.esc(h.horario)}</dd>
+          <dt>Valoración de pacientes</dt><dd>${h.valoracion.toFixed(1)} de 5</dd>
+        </dl>
+        <div class="hosp__esp" aria-label="Especialidades">${h.especialidades.map(e => `<span>${CP.nombreEspecialidad(e)}</span>`).join("")}</div>
+      </div>
+      <div class="hosp__pie">
+        <a class="btn btn--secundario" href="tel:${h.telefono.replace(/\s/g, "")}">Llamar</a>
+        <a class="btn btn--secundario" href="${osm}" target="_blank" rel="noopener">Ver mapa<span class="sr"> de ${CP.esc(h.nombre)} (abre en otra pestaña)</span></a>
+        <a class="btn btn--primario" href="comparador.html?esp=${$("esp").value || "medicina-general"}&prov=${h.provincia}">Ver costos</a>
+      </div>
+    </article>`;
+  }
+
+  function filtrar() {
+    const q = CP.motor.normalizar($("q").value);
+    const lista = CP.hospitales.filter(h =>
+      (!q || CP.motor.normalizar(h.nombre + " " + h.direccion).includes(q)) &&
+      (!$("prov").value || h.provincia === $("prov").value) &&
+      (!$("esp").value || h.especialidades.includes($("esp").value)) &&
+      (!$("soloRed").checked || (aseg && aseg.red[h.id]))
+    );
+    $("conteo").textContent = `${lista.length} ${lista.length === 1 ? "resultado" : "resultados"}`;
+    $("lista").innerHTML = lista.length ? lista.map(tarjeta).join("")
+      : `<div class="panel vacio" style="grid-column:1/-1"><p>Ningún hospital coincide con estos filtros. Prueba con otra provincia o quita el filtro de especialidad.</p></div>`;
+  }
+
+  $("filtros").addEventListener("input", filtrar);
+  $("filtros").addEventListener("submit", e => e.preventDefault());
+  filtrar();
+  if (location.hash) { const el = document.querySelector(location.hash); if (el) el.scrollIntoView(); }
+  </script>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es-PA">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E3A5B">
+  <title>Comparar costos · CopagoPA</title>
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+  <header id="cabecera"></header>
+
+  <main id="principal" class="contenedor">
+    <div class="cabeza-pagina">
+      <h1>Compara lo que pagarías en cada hospital</h1>
+      <p>Si ya sabes qué especialidad necesitas, elige los detalles y ordenamos la red según tu plan.</p>
+    </div>
+
+    <div class="dos-col">
+      <form class="panel" id="filtros" aria-label="Opciones de comparación">
+        <div class="campo">
+          <label for="esp">Especialidad</label>
+          <select id="esp"></select>
+        </div>
+
+        <fieldset class="campo" style="border:0;padding:0;margin:0 0 1rem">
+          <legend>Estudios a incluir</legend>
+          <div id="estudios"></div>
+        </fieldset>
+
+        <div class="campo">
+          <label for="prov">Provincia donde te atenderás</label>
+          <select id="prov"></select>
+        </div>
+
+        <div class="campo">
+          <label for="orden">Ordenar por</label>
+          <select id="orden">
+            <option value="precio">Lo que pagarías tú</option>
+            <option value="distancia">Distancia</option>
+          </select>
+        </div>
+
+        <label class="casilla"><input type="checkbox" id="soloRed"> Mostrar solo hospitales de mi red</label>
+
+        <div class="aviso" id="plan-actual" style="margin-top:1rem"></div>
+      </form>
+
+      <section aria-labelledby="t-res">
+        <h2 id="t-res" class="sr">Resultados</h2>
+        <p id="conteo" aria-live="polite" style="color:var(--tinta-suave)"></p>
+        <div id="resultados"></div>
+      </section>
+    </div>
+  </main>
+
+  <footer id="pie"></footer>
+
+  <script src="js/datos.js"></script>
+  <script src="js/motor.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+  CP.montarLayout("comparador");
+
+  const $ = (id) => document.getElementById(id);
+  const params = new URLSearchParams(location.search);
+  const perfil = CP.perfil.obtener();
+
+  CP.llenarSelect($("esp"), CP.especialidades, params.get("esp") || "medicina-general");
+  CP.llenarSelect($("prov"), CP.provincias, params.get("prov") || (perfil && perfil.provincia) || "panama");
+  const estudiosIniciales = (params.get("est") || "").split(",").filter(Boolean);
+
+  function pintarPlan() {
+    const d = CP.perfil.descripcion(perfil);
+    if (!d) {
+      $("plan-actual").innerHTML = `<p>Aún no identificas tu plan, así que ves <strong>precios de lista</strong>.</p><p><a href="mi-plan.html">Identificar mi plan</a></p>`;
+      $("soloRed").disabled = true;
+      return;
+    }
+    const ded = d.sel ? `<br>Deducible restante: ${CP.dinero(Math.max(0, d.sel.plan.deducible - (perfil.dedUsado || 0)))}` : "";
+    $("plan-actual").innerHTML = `<p>Calculando con <strong>${CP.esc(d.titulo)}</strong>${d.sel ? ", " + CP.esc(d.detalle) : ""}.${ded}</p><p><a href="mi-plan.html">Cambiar plan</a></p>`;
+    $("soloRed").disabled = !d.sel;
+  }
+
+  function pintarEstudios(marcarSugeridos) {
+    const esp = CP.especialidades.find(e => e.id === $("esp").value);
+    const ids = Array.from(new Set([...esp.estudios, ...Object.keys(CP.estudios)]));
+    $("estudios").innerHTML = ids.map(id => {
+      const marcado = marcarSugeridos ? estudiosIniciales.includes(id) : false;
+      const sug = esp.estudios.includes(id) ? " <small>(frecuente)</small>" : "";
+      return `<label class="casilla"><input type="checkbox" value="${id}" ${marcado ? "checked" : ""}> <span>${CP.estudios[id].nombre}${sug}</span></label>`;
+    }).slice(0, 8).join("");
+  }
+
+  function calcular() {
+    const estudios = [...$("estudios").querySelectorAll("input:checked")].map(i => i.value);
+    let res = CP.motor.rankear({
+      especialidadId: $("esp").value, estudiosIds: estudios, perfil,
+      provinciaId: $("prov").value, orden: $("orden").value
+    });
+    if ($("soloRed").checked) res = res.filter(r => r.nivel === "preferente" || r.nivel === "estandar");
+
+    $("conteo").textContent = res.length
+      ? `${res.length} ${res.length === 1 ? "hospital ofrece" : "hospitales ofrecen"} ${CP.nombreEspecialidad($("esp").value).toLowerCase()}.`
+      : "";
+
+    if (!res.length) {
+      $("resultados").innerHTML = `<div class="panel vacio"><p>Ningún hospital de tu red ofrece esta especialidad. Desmarca "Mostrar solo hospitales de mi red" para ver otras opciones.</p></div>`;
+      return;
+    }
+    $("resultados").innerHTML = res.map((r, i) => {
+      const n = CP.etiquetaNivel[r.nivel];
+      return `<article class="resultado ${i === 0 ? "resultado--destacado" : ""}">
+        <span class="resultado__pos" aria-hidden="true">${i + 1}</span>
+        <div class="resultado__cab">${CP.logo(r.hospital, 52)}
+          <div class="resultado__cuerpo">
+            <h3>${CP.esc(r.hospital.nombre)}</h3>
+            <p class="resultado__meta">${CP.esc(r.hospital.direccion)}, a unos ${r.distancia} km</p>
+            <div class="resultado__etiquetas"><span class="nivel ${n.clase}">${n.texto}</span>${r.etiquetas.map(e => `<span class="etiqueta">${e}</span>`).join("")}</div>
+          </div>
+        </div>
+        <div class="resultado__precio"><strong>${CP.dinero(r.totalPaciente)}</strong><span>de ${CP.dinero(r.totalLista)} de lista</span></div>
+        <details ${i === 0 ? "open" : ""}><summary>Ver desglose</summary>${CP.ticketHTML(r)}
+          ${r.nivel === "fuera" ? `<p class="aviso aviso--alerta" style="margin-top:.75rem">Fuera de red tu aseguradora reconoce solo una parte de la tarifa. El excedente no cuenta para tu tope anual.</p>` : ""}
+        </details>
+      </article>`;
+    }).join("");
+  }
+
+  $("esp").addEventListener("change", () => { pintarEstudios(false); calcular(); });
+  $("filtros").addEventListener("change", calcular);
+  $("filtros").addEventListener("submit", e => e.preventDefault());
+
+  pintarPlan();
+  pintarEstudios(true);
+  calcular();
+  </script>
+</body>
+</html>

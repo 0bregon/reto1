@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es-PA">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Estima cuánto pagarás de copago en hospitales y clínicas de Panamá antes de atenderte.">
+  <meta name="theme-color" content="#0E3A5B">
+  <title>CopagoPA · Sabe cuánto pagarás antes de ir al médico</title>
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+  <header id="cabecera"></header>
+
+  <main id="principal">
+    <section class="portada">
+      <div class="contenedor portada__rejilla">
+        <div>
+          <h1>Sabe cuánto vas a pagar antes de ir al médico</h1>
+          <p class="portada__entrada">Cuéntale al asistente qué sientes. Te sugerimos la especialidad, revisamos tu plan de seguro y comparamos los hospitales de tu red para que elijas con números claros.</p>
+          <div class="portada__acciones">
+            <a class="btn btn--primario" href="asistente.html">Describir mis síntomas</a>
+            <a class="btn btn--secundario" href="comparador.html">Comparar por especialidad</a>
+          </div>
+        </div>
+
+        <div class="portada__ticket" aria-label="Ejemplo de estimado">
+          <div class="ticket" id="ticket-ejemplo"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="seccion" aria-labelledby="t-como">
+      <div class="contenedor">
+        <h2 id="t-como">Cómo funciona</h2>
+        <ol class="pasos">
+          <li><h3>Describe lo que sientes</h3><p>Con tus palabras. El asistente identifica la especialidad adecuada y te avisa si parece una urgencia.</p></li>
+          <li><h3>Identifica tu plan</h3><p>Ingresa con tu cédula o elige tu aseguradora y plan. Vemos cuánto deducible te queda este año.</p></li>
+          <li><h3>Calculamos tu copago</h3><p>Aplicamos tarifas negociadas, deducible, coaseguro y tope anual con reglas fijas y verificables.</p></li>
+          <li><h3>Elige con transparencia</h3><p>Ves los hospitales ordenados por lo que tú pagarías, con el desglose de cada monto.</p></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="seccion" aria-labelledby="t-red">
+      <div class="contenedor">
+        <h2 id="t-red">Hospitales y clínicas en todo el país</h2>
+        <p>De Bocas del Toro a Colón, de Chiriquí a la Ciudad de Panamá.</p>
+        <div class="franja-logos" id="franja-logos"></div>
+        <p style="margin-top:1.5rem"><a href="hospitales.html">Ver el directorio completo</a></p>
+      </div>
+    </section>
+
+    <section class="seccion">
+      <div class="contenedor">
+        <div class="aviso">
+          <p><strong>Esto es una estimación, no una cotización garantizada.</strong> Úsala para planificar. Antes de atenderte, confirma la cobertura con tu aseguradora; algunos servicios requieren autorización previa.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer id="pie"></footer>
+
+  <script src="js/datos.js"></script>
+  <script src="js/motor.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    CP.montarLayout("inicio");
+
+    // Ticket de ejemplo con datos reales del motor (paciente demo)
+    (function () {
+      const demo = CP.pacientesDemo[0];
+      const h = CP.hospitales.find(x => x.id === "h03");
+      const est = CP.motor.estimar({ hospital: h, especialidadId: "neurologia", estudiosIds: [], perfil: demo });
+      const nivel = CP.etiquetaNivel[est.nivel];
+      document.getElementById("ticket-ejemplo").outerHTML = `
+        <div>
+          <div class="ticket" style="-webkit-mask:none;mask:none;border-bottom:0;padding-bottom:0">
+            <div class="portada__ticket-cab">
+              ${CP.logo(h, 44)}
+              <div><strong>${h.nombre}</strong><p>Neurología, plan Istmo Plus</p></div>
+            </div>
+            <p style="margin:.6rem 0 0"><span class="nivel ${nivel.clase}">${nivel.texto}</span></p>
+          </div>
+          ${CP.ticketHTML(est)}
+        </div>`;
+    })();
+
+    document.getElementById("franja-logos").innerHTML = CP.hospitales.slice(0, 8)
+      .map(h => `<a href="hospitales.html#${h.id}">${CP.logo(h, 40)}<span>${CP.esc(h.nombre)}</span></a>`).join("");
+  </script>
+</body>
+</html>

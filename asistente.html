@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="es-PA">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E3A5B">
+  <title>Asistente · CopagoPA</title>
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+  <header id="cabecera"></header>
+
+  <main id="principal" class="contenedor">
+    <h1 class="sr">Asistente de copago</h1>
+    <div class="chat-rejilla">
+      <section class="chat" aria-label="Conversación con el asistente">
+        <div class="chat__cab">
+          <div class="chat__avatar" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z" fill="var(--turquesa)"/></svg>
+          </div>
+          <div><strong>Asistente CopagoPA</strong><p>Orientación de costos, no diagnóstico médico</p></div>
+        </div>
+        <div class="chat__log" id="log" role="log" aria-live="polite" aria-relevant="additions"></div>
+        <form class="chat__entrada" id="form" autocomplete="off">
+          <label for="entrada" class="sr">Escribe tu mensaje</label>
+          <input type="text" id="entrada" placeholder="Describe tus síntomas…" maxlength="300">
+          <button class="btn btn--primario" type="submit">Enviar</button>
+        </form>
+      </section>
+
+      <aside class="chat-resumen" aria-label="Resumen de tu consulta">
+        <div class="panel">
+          <h2 style="font-size:1.2rem">Tu consulta</h2>
+          <div id="resumen"></div>
+          <button class="btn btn--secundario btn--bloque" type="button" id="reiniciar" style="margin-top:1rem">Empezar de nuevo</button>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <footer id="pie"></footer>
+
+  <script src="js/datos.js"></script>
+  <script src="js/motor.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+  CP.montarLayout("asistente");
+
+  /* =====================================================
+     Orquestador: máquina de estados
+     sintoma → especialidad → plan → provincia → estudios → ranking
+     ===================================================== */
+  const log = document.getElementById("log");
+  const entrada = document.getElementById("entrada");
+  const reducido = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  let s = nuevoEstado();
+  function nuevoEstado() {
+    return { paso: "sintoma", texto: "", especialidad: null, estudios: [], perfil: CP.perfil.obtener(), provincia: null };
+  }
+
+  /* ---------- Utilidades de conversación ---------- */
+  function desplazar() { log.scrollTop = log.scrollHeight; }
+
+  function burbuja(html, clases = "msj--bot") {
+    const d = document.createElement("div");
+    d.className = "msj " + clases;
+    d.innerHTML = html;
+    log.appendChild(d); desplazar();
+    return d;
+  }
+
+  function bot(html, clases) {
+    return new Promise(res => {
+      const pensando = burbuja('<span class="escribiendo" aria-label="El asistente está escribiendo"><i></i><i></i><i></i></span>');
+      setTimeout(() => { pensando.remove(); res(burbuja(html, "msj--bot " + (clases || ""))); }, reducido ? 50 : 450);
+    });
+  }
+
+  function usuario(texto) { burbuja(`<p>${CP.esc(texto)}</p>`, "msj--usuario"); }
+
+  function chips(opciones) {
+    const cont = document.createElement("div");
+    cont.className = "chips";
+    cont.setAttribute("role", "group");
+    cont.setAttribute("aria-label", "Respuestas sugeridas");
+    opciones.forEach(([texto, accion]) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "chip"; b.textContent = texto;
+      b.addEventListener("click", () => {
+        cont.querySelectorAll("button").forEach(x => x.disabled = true);
+        usuario(texto); accion();
+      });
+      cont.appendChild(b);
+    });
+    log.appendChild(cont); desplazar();
+    const primero = cont.querySelector("button");
+    if (primero && document.activeElement !== entrada) primero.focus({ preventScroll: true });
+  }
+
+  function guardarPerfil() { if (s.perfil) CP.perfil.guardar(s.perfil); CP.montarLayout("asistente"); actualizarResumen(); }
+
+  /* ---------- Resumen lateral ---------- */
+  function actualizarResumen() {
+    const d = CP.perfil.descripcion(s.perfil);
+    let dedTxt = "—";
+    if (d && d.sel) {
+      const rest = Math.max(0, d.sel.plan.deducible - (s.perfil.dedUsado || 0));
+      dedTxt = `${CP.dinero(rest)} de ${CP.dinero(d.sel.plan.deducible)}`;
+    }
+    const filas = [
+      ["Especialidad", s.especialidad ? CP.nombreEspecialidad(s.especialidad) : "Por definir"],
+      ["Plan", d ? `${d.titulo}${d.sel ? ", " + d.detalle : ""}` : "Por identificar"],
+      ["Deducible restante", dedTxt],
+      ["Provincia", s.provincia ? CP.nombreProvincia(s.provincia) : "Por definir"]
+    ];
+    document.getElementById("resumen").innerHTML = filas.map(([k, v]) =>
+      `<div class="resumen__dato"><span>${k}</span><strong>${CP.esc(v)}</strong></div>`).join("");
+  }
+
+  /* ---------- Paso 1: síntomas (Tool 1) ---------- */
+  async function inicio() {
+    s = nuevoEstado(); log.innerHTML = ""; actualizarResumen();
+    const saludo = s.perfil && s.perfil.nombre ? `Hola, ${CP.esc(s.perfil.nombre.split(" ")[0])}.` : "Hola.";
+    await bot(`<p>${saludo} Te ayudo a estimar cuánto pagarías por una consulta y en qué hospital de tu red te conviene más.</p><p>¿Qué síntomas tienes? Descríbelos con tus palabras.</p>`);
+    chips(CP.ejemplosSintomas.slice(0, 3).map(t => [t, () => procesarSintoma(t)]));
+    entrada.focus();
+  }
+
+  async function procesarSintoma(texto) {
+    s.texto = texto;
+    const r = CP.motor.clasificar(texto);
+
+    if (r.alertas.length) {
+      const esCrisis = r.alertas.some(a => a.patron.includes("suicid"));
+      await bot(`<p><strong>Esto podría ser una urgencia.</strong> ${CP.esc(r.alertas[0].mensaje)}</p>
+        <p>${esCrisis ? "Si estás pensando en hacerte daño, llama ahora al <a href='tel:911'>911</a> o busca a una persona de confianza que te acompañe." : "Llama al <a href='tel:911'>911</a> o acude al servicio de urgencias más cercano. No esperes a comparar precios."}</p>`, "msj--alerta");
+      chips([
+        ["Ver urgencias cercanas", () => elegirEspecialidad("urgencias")],
+        ["No es grave, continuar", () => sugerir(r)]
+      ]);
+      return;
+    }
+    sugerir(r);
+  }
+
+  async function sugerir(r) {
+    if (!r.principal) {
+      s.paso = "sintoma";
+      await bot("<p>No logré identificar una especialidad con esa descripción. Puedes contarme más detalles (dónde te duele, desde cuándo) o elegir una opción.</p>");
+      chips(["medicina-general", "pediatria", "ginecologia", "ortopedia"].map(id => [CP.nombreEspecialidad(id), () => elegirEspecialidad(id)]));
+      return;
+    }
+    const p = r.principal;
+    await bot(`<p>Por lo que describes, te conviene consultar en <strong>${CP.nombreEspecialidad(p.especialidad)}</strong>.</p>
+      <p style="font-size:.9rem;color:var(--tinta-suave)">Me basé en: ${p.coincidencias.map(CP.esc).join(", ")}.</p>`);
+    const opciones = [[`Sí, ${CP.nombreEspecialidad(p.especialidad)}`, () => elegirEspecialidad(p.especialidad)]];
+    r.sugerencias.slice(1).forEach(x => opciones.push([CP.nombreEspecialidad(x.especialidad), () => elegirEspecialidad(x.especialidad)]));
+    if (!r.sugerencias.some(x => x.especialidad === "medicina-general")) opciones.push(["Mejor medicina general", () => elegirEspecialidad("medicina-general")]);
+    chips(opciones);
+  }
+
+  function elegirEspecialidad(id) { s.especialidad = id; actualizarResumen(); pasoPlan(); }
+
+  /* ---------- Paso 2: plan (Tool 2) ---------- */
+  async function pasoPlan() {
+    s.paso = "plan";
+    const d = CP.perfil.descripcion(s.perfil);
+    if (d) {
+      const extra = d.sel ? ` Te quedan ${CP.dinero(Math.max(0, d.sel.plan.deducible - (s.perfil.dedUsado || 0)))} de deducible este año.` : "";
+      await bot(`<p>Tengo registrado tu plan: <strong>${CP.esc(d.titulo)}</strong>${d.sel ? " de " + CP.esc(d.detalle) : ""}.${extra}</p>`);
+      chips([["Usar este plan", pasoProvincia], ["Cambiar de plan", preguntarPlan]]);
+    } else preguntarPlan();
+  }
+
+  async function preguntarPlan() {
+    await bot("<p>¿Cómo quieres identificar tu plan de seguro?</p>");
+    chips([
+      ["Ingresar con mi cédula", pedirCedula],
+      ["Elegir aseguradora y plan", elegirAseguradora],
+      ["No tengo seguro privado", () => { s.perfil = { origen: "manual", aseguradora: null, provincia: s.perfil && s.perfil.provincia }; guardarPerfil(); pasoProvincia(); }]
+    ]);
+  }
+
+  async function pedirCedula() {
+    s.paso = "cedula";
+    await bot(`<p>Escribe tu número de cédula con guiones, por ejemplo <strong>8-845-1203</strong>.</p>
+      <p style="font-size:.9rem;color:var(--tinta-suave)">Demostración: puedes usar ${CP.pacientesDemo.map(p => p.cedula).join(", ")}.</p>`);
+    entrada.placeholder = "Ej. 8-845-1203"; entrada.focus();
+  }
+
+  async function buscarCedula(texto) {
+    const ced = texto.trim().toUpperCase();
+    if (!/^(\d{1,2}|PE|E|N)-\d{1,4}-\d{1,6}$/.test(ced)) {
+      await bot("<p>Ese formato no parece una cédula panameña. Usa el formato provincia-tomo-asiento, por ejemplo 8-845-1203.</p>");
+      return;
+    }
+    const p = CP.pacientesDemo.find(x => x.cedula === ced);
+    if (!p) {
+      await bot("<p>No encontré una póliza con esa cédula en la demostración. Puedes intentar otra o elegir tu plan manualmente.</p>");
+      chips([["Elegir aseguradora y plan", elegirAseguradora], ["Intentar otra cédula", pedirCedula]]);
+      return;
+    }
+    s.perfil = { origen: "cedula", ...p };
+    entrada.placeholder = "Describe tus síntomas…";
+    guardarPerfil();
+    const d = CP.perfil.descripcion(s.perfil);
+    await bot(`<p>Encontré la póliza <strong>${p.poliza}</strong> a nombre de ${CP.esc(p.nombre)}: plan ${d.titulo} de ${d.detalle}.</p>`);
+    pasoProvincia();
+  }
+
+  async function elegirAseguradora() {
+    s.paso = "plan";
+    await bot("<p>¿Cuál es tu aseguradora?</p>");
+    chips(CP.aseguradoras.map(a => [a.nombre, () => elegirPlan(a)]));
+  }
+
+  async function elegirPlan(a) {
+    await bot(`<p>¿Qué plan de ${CP.esc(a.nombre)} tienes?</p>`);
+    chips(a.planes.map(p => [p.nombre, () => preguntarDeducible(a, p)]));
+  }
+
+  async function preguntarDeducible(a, p) {
+    await bot(`<p>Tu plan tiene un deducible anual de ${CP.dinero(p.deducible)}. ¿Cuánto has usado este año?</p>`);
+    const fijar = (usado) => () => {
+      s.perfil = { origen: "manual", aseguradora: a.id, plan: p.id, dedUsado: usado, topeUsado: usado, provincia: s.perfil && s.perfil.provincia };
+      guardarPerfil(); pasoProvincia();
+    };
+    chips([["Nada todavía", fijar(0)], ["Más o menos la mitad", fijar(Math.round(p.deducible / 2))], ["Ya lo cubrí completo", fijar(p.deducible)], ["No lo sé", fijar(0)]]);
+  }
+
+  /* ---------- Paso 3: provincia ---------- */
+  async function pasoProvincia() {
+    s.paso = "provincia";
+    const actual = s.perfil && s.perfil.provincia;
+    await bot(`<p>¿En qué provincia quieres atenderte?${actual ? ` Tengo registrada ${CP.nombreProvincia(actual)}.` : ""}</p>`);
+    const orden = actual ? [CP.provincias.find(p => p.id === actual), ...CP.provincias.filter(p => p.id !== actual)] : CP.provincias;
+    chips(orden.map(p => [p.nombre, () => {
+      s.provincia = p.id;
+      if (s.perfil) { s.perfil.provincia = p.id; guardarPerfil(); } else actualizarResumen();
+      pasoEstudios();
+    }]));
+  }
+
+  /* ---------- Paso 4: estudios ---------- */
+  async function pasoEstudios() {
+    const esp = CP.especialidades.find(e => e.id === s.especialidad);
+    if (!esp.estudios.length) { s.estudios = []; return mostrarResultados(); }
+    const nombres = esp.estudios.map(id => CP.estudios[id].nombre.toLowerCase()).join(", ");
+    await bot(`<p>En ${esp.nombre.toLowerCase()} es común que pidan ${nombres}. ¿Los incluyo en el estimado?</p>`);
+    chips([
+      ["Solo la consulta", () => { s.estudios = []; mostrarResultados(); }],
+      ["Consulta y estudios", () => { s.estudios = esp.estudios.slice(); mostrarResultados(); }]
+    ]);
+  }
+
+  /* ---------- Paso 5: ranking (Tool 3 + motor) ---------- */
+  function tarjetaResultado(r, i) {
+    const n = CP.etiquetaNivel[r.nivel];
+    return `<article class="resultado ${i === 0 ? "resultado--destacado" : ""}">
+      <span class="resultado__pos" aria-hidden="true">${i + 1}</span>
+      <div class="resultado__cab">${CP.logo(r.hospital, 48)}
+        <div class="resultado__cuerpo">
+          <h3>${CP.esc(r.hospital.nombre)}</h3>
+          <p class="resultado__meta">${CP.esc(r.hospital.direccion)}, a unos ${r.distancia} km</p>
+          <div class="resultado__etiquetas"><span class="nivel ${n.clase}">${n.texto}</span>${r.etiquetas.map(e => `<span class="etiqueta">${e}</span>`).join("")}</div>
+        </div>
+      </div>
+      <div class="resultado__precio"><strong>${CP.dinero(r.totalPaciente)}</strong><span>de ${CP.dinero(r.totalLista)} de lista</span></div>
+      <details><summary>Ver desglose</summary>${CP.ticketHTML(r)}</details>
+    </article>`;
+  }
+
+  async function mostrarResultados() {
+    s.paso = "resultados";
+    const res = CP.motor.rankear({ especialidadId: s.especialidad, estudiosIds: s.estudios, perfil: s.perfil, provinciaId: s.provincia });
+    const cercanos = res.filter(r => r.distancia <= 120);
+    const lista = (cercanos.length ? cercanos : res).slice(0, 3);
+
+    if (!lista.length) {
+      await bot("<p>No hay hospitales en la red simulada con esa especialidad. Prueba con medicina general.</p>");
+      chips([["Medicina general", () => elegirEspecialidad("medicina-general")], ["Nueva consulta", inicio]]);
+      return;
+    }
+    const mejor = lista[0];
+    await bot(`<p>Estas son tus mejores opciones para <strong>${CP.nombreEspecialidad(s.especialidad)}</strong> cerca de ${CP.nombreProvincia(s.provincia)}, ordenadas por lo que pagarías tú.</p>
+      <p>La opción más económica es <strong>${CP.esc(mejor.hospital.nombre)}</strong>, con un estimado de <strong>${CP.dinero(mejor.totalPaciente)}</strong>.</p>`);
+    burbuja(lista.map(tarjetaResultado).join(""), "msj--bot msj--ancho");
+    await bot(`<p><strong>Esto es una estimación, no una cotización garantizada.</strong> Confirma con tu aseguradora antes de atenderte; algunos estudios requieren autorización previa.</p>`, "");
+    const params = new URLSearchParams({ esp: s.especialidad, prov: s.provincia, est: s.estudios.join(",") });
+    chips([
+      ["Ver todos los hospitales", () => location.href = "comparador.html?" + params],
+      ["Cambiar provincia", pasoProvincia],
+      ["Nueva consulta", inicio]
+    ]);
+  }
+
+  /* ---------- Entrada libre ---------- */
+  document.getElementById("form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const t = entrada.value.trim();
+    if (!t) return;
+    entrada.value = "";
+    log.querySelectorAll(".chips button").forEach(b => b.disabled = true);
+    usuario(t);
+    if (s.paso === "cedula") return buscarCedula(t);
+    // En cualquier otro paso, el texto libre se trata como una nueva descripción de síntomas
+    s.especialidad = null; s.estudios = []; actualizarResumen();
+    procesarSintoma(t);
+  });
+  document.getElementById("reiniciar").addEventListener("click", inicio);
+
+  inicio();
+  </script>
+</body>
+</html>

@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Auditor Agéntico de Facturación de Siniestros</title>
+<style>
+:root{
+  --ink:#101a2e; --ink-soft:#3b4a63; --paper:#eef0ec; --paper-2:#e2e5de;
+  --line:#c7ccc1; --accent:#1f6f78; --green:#2f6f4f; --green-bg:#e3ede4;
+  --amber:#95651c; --amber-bg:#f3e6cf; --red:#a3372a; --red-bg:#f5dfd9;
+  --white:#fbfbf9;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ink:#e9ebe4; --ink-soft:#b7bfae; --paper:#14181a; --paper-2:#1b201f;
+    --line:#3a413c; --accent:#4fb0b8; --green:#7fbf99; --green-bg:#1e2b22;
+    --amber:#d9a75c; --amber-bg:#2e2618; --red:#e2867a; --red-bg:#301f1c; --white:#191d1d;
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#e9ebe4; --ink-soft:#b7bfae; --paper:#14181a; --paper-2:#1b201f;
+  --line:#3a413c; --accent:#4fb0b8; --green:#7fbf99; --green-bg:#1e2b22;
+  --amber:#d9a75c; --amber-bg:#2e2618; --red:#e2867a; --red-bg:#301f1c; --white:#191d1d;
+}
+*{box-sizing:border-box;}
+html{scroll-padding-top:env(safe-area-inset-top,0px);}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.55;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+h1,h2,h3{font-family:Arial,Helvetica,sans-serif; font-weight:700; margin:0;}
+.wrap{max-width:920px; margin:0 auto; padding:32px 20px 80px;}
+header.top{border-bottom:2px solid var(--ink); padding-bottom:16px; margin-bottom:26px;}
+header.top .kicker{color:var(--accent); font-size:12.5px; font-weight:700; margin-bottom:6px;}
+header.top h1{font-size:26px;}
+header.top p{color:var(--ink-soft); max-width:65ch; margin-top:8px;}
+section{margin-bottom:32px;}
+.section-title{font-size:18px; font-weight:700; margin-bottom:12px; display:flex; align-items:baseline; gap:10px;}
+.section-title small{font-weight:400; font-size:12px; color:var(--ink-soft);}
+.card{background:var(--white); border:1px solid var(--line); border-radius:6px; padding:16px 18px; box-shadow:0 1px 3px rgba(0,0,0,.05);}
+.case-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px 24px;}
+.case-grid div span{display:block; color:var(--ink-soft); font-size:11.5px; margin-bottom:2px;}
+table{width:100%; border-collapse:collapse; font-size:13px;}
+th{text-align:left; font-weight:700; color:var(--ink-soft); font-size:11px; padding:6px 10px; border-bottom:1px solid var(--ink); white-space:nowrap;}
+td{padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top;}
+tr:last-child td{border-bottom:none;}
+.num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;}
+.tablewrap{overflow-x:auto; border:1px solid var(--line); border-radius:6px; background:var(--white); margin-bottom:12px;}
+.actions{display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;}
+button{font-family:inherit; font-size:13px; font-weight:700; cursor:pointer; border-radius:5px; padding:10px 16px; border:1px solid var(--ink); background:var(--ink); color:var(--white);}
+button.secondary{background:transparent; color:var(--ink); border-color:var(--line);}
+button.link{background:none; border:none; color:var(--accent); padding:2px 0; text-decoration:underline; font-weight:700;}
+button:disabled{opacity:.5; cursor:default;}
+.pill{display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700;}
+.pill.aprobado{background:var(--green-bg); color:var(--green);}
+.pill.observado{background:var(--amber-bg); color:var(--amber);}
+.pill.rechazado{background:var(--red-bg); color:var(--red);}
+.pill.status{background:var(--paper-2); color:var(--ink-soft); border:1px solid var(--line);}
+.summary{display:grid; grid-template-columns:repeat(4,1fr); gap:12px;}
+.summary .card{padding:14px;}
+.summary .card span{display:block; font-size:11px; color:var(--ink-soft); margin-bottom:6px;}
+.summary .card b{font-size:21px;}
+.finding{border-left:3px solid var(--line); padding:8px 0 8px 14px; margin-bottom:10px;}
+.finding.alta{border-color:var(--red);}
+.finding.media{border-color:var(--amber);}
+.finding.baja{border-color:var(--green);}
+.finding .fitem{font-weight:700;}
+.finding .fsev{color:var(--ink-soft); font-size:11px; text-transform:uppercase; margin-left:8px;}
+.rec-box{padding:14px 16px; border-radius:6px; margin-top:14px;}
+.rec-box.aprobar{background:var(--green-bg); color:var(--green);}
+.rec-box.aprobar_con_ajustes{background:var(--amber-bg); color:var(--amber);}
+.rec-box.revision_manual{background:var(--red-bg); color:var(--red);}
+.note{font-size:12px; color:var(--ink-soft); margin-top:10px;}
+.hidden{display:none !important;}
+.spinner{font-size:13px; color:var(--ink-soft);}
+.error-text{color:var(--red); font-size:12.5px; margin-top:10px;}
+.success-text{color:var(--green); font-size:12.5px; margin-top:10px;}
+/* Auth */
+.auth-wrap{max-width:420px; margin:50px auto;}
+.auth-card{background:var(--white); border:1px solid var(--line); border-top:3px solid var(--accent); border-radius:8px; padding:28px 26px; box-shadow:0 2px 10px rgba(0,0,0,.06);}
+.auth-tabs{display:flex; margin-bottom:20px; border-bottom:1px solid var(--line);}
+.auth-tab{flex:1; text-align:center; padding:10px; cursor:pointer; color:var(--ink-soft); border:none; border-bottom:2px solid transparent; background:none; font-weight:700;}
+.auth-tab.active{color:var(--ink); border-color:var(--ink);}
+.field{margin-bottom:14px;}
+.field label{display:block; font-size:12px; color:var(--ink-soft); margin-bottom:4px; font-weight:700;}
+.field input, .field select, .field textarea{width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:5px; font-family:inherit; font-size:14px; background:var(--white); color:var(--ink);}
+.auth-switch{text-align:center; margin-top:14px; font-size:13px; color:var(--ink-soft);}
+.code-box{background:var(--amber-bg); color:var(--amber); padding:12px; border-radius:6px; font-size:24px; letter-spacing:6px; text-align:center; font-weight:700; margin-bottom:14px;}
+/* App */
+.topbar{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:26px; padding-bottom:14px; border-bottom:2px solid var(--ink);}
+.topbar .who{font-size:13px; color:var(--ink-soft);}
+.topbar .who b{color:var(--ink);}
+.topbar-right{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+.add-row{display:grid; grid-template-columns:2fr 1fr 1fr 1fr auto; gap:8px; align-items:end; margin-bottom:14px;}
+.add-row .field{margin-bottom:0;}
+.msg-list{max-height:220px; overflow-y:auto; border:1px solid var(--line); border-radius:6px; padding:10px; background:var(--paper-2); margin-bottom:10px;}
+.msg-item{padding:6px 0; border-bottom:1px solid var(--line);}
+.msg-item:last-child{border-bottom:none;}
+.msg-item .who{font-weight:700; font-size:12px;}
+.msg-item .ts{color:var(--ink-soft); font-size:11px; margin-left:6px;}
+.msg-send{display:flex; gap:8px;}
+.msg-send textarea{flex:1; min-height:44px; resize:vertical; padding:9px 10px; border:1px solid var(--line); border-radius:5px; font-family:inherit;}
+.scope-item{display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line);}
+.scope-item:last-child{border-bottom:none;}
+.scope-item input[type=number]{width:80px; padding:6px; border:1px solid var(--line); border-radius:4px;}
+@media (max-width:640px){
+  .case-grid{grid-template-columns:1fr;} .summary{grid-template-columns:1fr 1fr;} .add-row{grid-template-columns:1fr 1fr;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="kicker">CUENTAS SEPARADAS · TALLER Y ASEGURADORA</div>
+    <h1>Auditor Agéntico de Facturación de Siniestros</h1>
+    <p>El taller crea su cuenta e ingresa el siniestro y la factura. La aseguradora define el alcance autorizado y el agente audita automáticamente contra el tarifario, marcando discrepancias y duplicados antes de que un humano revise la cuenta.</p>
+  </header>
+
+  <div id="authWrap" class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabLogin">Iniciar sesión</button>
+        <button class="auth-tab" id="tabRegister">Crear cuenta</button>
+      </div>
+
+      <div id="loginForm">
+        <div class="field"><label>Usuario</label><input id="loginUser" type="text" autocomplete="username"></div>
+        <div class="field"><label>Contraseña</label><input id="loginPass" type="password" autocomplete="current-password"></div>
+        <button id="btnLogin" style="width:100%">Iniciar sesión</button>
+        <div class="error-text hidden" id="loginError"></div>
+        <p class="auth-switch">¿No tienes cuenta? <button class="link" id="goRegister">Crear una</button></p>
+      </div>
+
+      <div id="registerForm" class="hidden">
+        <div class="field"><label>Tipo de cuenta</label>
+          <select id="regRole"><option value="taller">Taller</option><option value="aseguradora">Aseguradora</option></select>
+        </div>
+        <div class="field"><label>Nombre del taller / aseguradora</label><input id="regOrg" type="text"></div>
+        <div class="field"><label>Usuario</label><input id="regUser" type="text"></div>
+        <div class="field"><label>Contraseña</label><input id="regPass" type="password"></div>
+        <div class="field"><label>Confirmar contraseña</label><input id="regPass2" type="password"></div>
+        <button id="btnRegister" style="width:100%">Crear cuenta</button>
+        <div class="error-text hidden" id="registerError"></div>
+        <p class="auth-switch">¿Ya tienes cuenta? <button class="link" id="goLogin">Inicia sesión</button></p>
+      </div>
+
+      <div id="confirmForm" class="hidden">
+        <p style="margin-top:0">Esta es una demo sin servidor de correo real: aquí está el código que en producción llegaría a tu email.</p>
+        <div class="code-box" id="confirmCodeShown"></div>
+        <div class="field"><label>Ingresa el código para confirmar tu cuenta</label><input id="confirmCodeInput" type="text" maxlength="6"></div>
+        <button id="btnConfirm" style="width:100%">Confirmar cuenta</button>
+        <div class="error-text hidden" id="confirmError"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="appWrap" class="hidden">
+    <div class="topbar">
+      <div class="who">Sesión: <b id="whoName"></b> · <span id="whoRole"></span></div>
+      <div class="topbar-right">
+        <span class="pill status" id="statusPill"></span>
+        <button class="secondary" id="btnNuevoCaso">↺ Nuevo caso</button>
+        <button class="link" id="btnLogout">Cerrar sesión</button>
+      </div>
+    </div>
+
+    <section>
+      <div class="section-title">Tarifario acordado <small>referencia compartida entre taller y aseguradora</small></div>
+      <div class="tablewrap"><table id="tablaTarifario"></table></div>
+    </section>
+
+    <section id="tallerFormSec" class="hidden">
+      <div class="section-title">Preparar factura del siniestro</div>
+      <div class="card">
+        <div class="field"><label>Número de siniestro</label><input id="fNumero" type="text"></div>
+        <div class="field"><label>Vehículo</label><input id="fVehiculo" type="text" placeholder="Marca, modelo, año, placa"></div>
+        <div class="field"><label>Fecha</label><input id="fFecha" type="date"></div>
+        <div class="field"><label>Daño reportado</label><textarea id="fDano" rows="2"></textarea></div>
+
+        <div class="tablewrap"><table id="tablaDraft"></table></div>
+        <datalist id="tarifarioDatalist"></datalist>
+        <div class="add-row">
+          <div class="field"><label>Ítem facturado</label><input id="itemNombre" list="tarifarioDatalist" placeholder="Nombre exacto del tarifario o uno nuevo"></div>
+          <div class="field"><label>Cantidad</label><input id="itemCant" type="number" min="1" value="1"></div>
+          <div class="field"><label>Precio unit.</label><input id="itemPrecio" type="number" min="0"></div>
+          <div class="field"><label>N.º factura</label><input id="itemFactura" type="text" placeholder="F-0001"></div>
+          <button id="btnAgregarItem">Agregar</button>
+        </div>
+        <div class="actions" style="margin-top:0">
+          <button class="secondary" id="btnEjemplo">Rellenar con ejemplo</button>
+          <button id="btnEnviar">Enviar factura a la aseguradora</button>
+        </div>
+        <div class="error-text hidden" id="facturaError"></div>
+      </div>
+    </section>
+
+    <section id="facturaSec" class="hidden">
+      <div class="section-title" id="facturaTitle">Factura</div>
+      <div class="card case-grid" id="casoBox"></div>
+      <div class="tablewrap" style="margin-top:12px"><table id="tablaFactura"></table></div>
+    </section>
+
+    <section id="scopeSec" class="hidden">
+      <div class="section-title">Definir alcance autorizado <small>según el peritaje del siniestro — lo hace la aseguradora, no el taller</small></div>
+      <div class="card" id="scopeBox"></div>
+      <div class="actions"><button id="btnEjecutarAuditoria">Confirmar alcance y ejecutar auditoría</button></div>
+    </section>
+
+    <section id="resultados" class="hidden">
+      <div class="section-title">Resumen ejecutivo</div>
+      <div class="summary" id="summaryBox"></div>
+    </section>
+
+    <section id="detalleSec" class="hidden">
+      <div class="section-title">Auditoría detallada por ítem</div>
+      <div class="tablewrap"><table id="tablaAuditoria"></table></div>
+      <div class="actions" style="margin-top:0"><button class="secondary" id="btnDescargar">⬇ Descargar reporte (CSV)</button></div>
+    </section>
+
+    <section id="iaSec" class="hidden">
+      <div class="section-title">Análisis del agente <small>razonamiento generado con Claude</small></div>
+      <div class="card" id="iaBox"></div>
+    </section>
+
+    <section id="respuestaTallerSec" class="hidden">
+      <div class="section-title">Resultado de la auditoría</div>
+      <div class="card" id="respuestaTallerBox"></div>
+      <div class="actions" style="margin-top:0"><button id="btnCorregir">Corregir factura y reenviar</button></div>
+    </section>
+
+    <section id="chatSec" class="hidden">
+      <div class="section-title">Comunicación taller ↔ aseguradora <small>para reportar y corregir errores</small></div>
+      <div class="msg-list" id="msgList"></div>
+      <div class="msg-send"><textarea id="msgInput" placeholder="Escribe un mensaje..."></textarea><button id="btnEnviarMsg">Enviar</button></div>
+    </section>
+  </div>
+
+  <p class="note">Demo con datos simulados. Las contraseñas se procesan solo en tu navegador (hash SHA-256 con sal) y el código de confirmación de cuenta es simulado, no llega un correo real. El caso activo es compartido por todos los usuarios de esta demo.</p>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = n => '$' + Math.round(n).toLocaleString('es-CO',{minimumFractionDigits:0});
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function randomHex(bytes){ const a=new Uint8Array(bytes); crypto.getRandomValues(a); return [...a].map(b=>b.toString(16).padStart(2,'0')).join(''); }
+async function sha256Hex(str){ const enc=new TextEncoder().encode(str); const buf=await crypto.subtle.digest('SHA-256',enc); return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
+function genCode(){ return String(Math.floor(100000+Math.random()*900000)); }
+function showErr(id,msg){ const el=$(id); el.textContent=msg; el.classList.remove('hidden'); }
+function clearErr(id){ $(id).classList.add('hidden'); }
+
+const DEFAULT_TARIFARIO = [
+  {id:'PARAGOLPES-DEL', nombre:'Parachoques delantero', cat:'Repuesto', max:185000},
+  {id:'FARO-DER', nombre:'Faro delantero derecho', cat:'Repuesto', max:96000},
+  {id:'CAPOT', nombre:'Capó', cat:'Repuesto', max:210000},
+  {id:'MO-LAT', nombre:'Mano de obra latonería (hora)', cat:'Labor', max:18000},
+  {id:'MO-PINT', nombre:'Mano de obra pintura (hora)', cat:'Labor', max:15000},
+  {id:'INS-PINT', nombre:'Insumos de pintura', cat:'Insumo', max:75000},
+  {id:'ALINEACION', nombre:'Alineación y balanceo', cat:'Labor', max:22000},
+];
+function defaultCaso(){ return {estado:'preparando', tarifario:DEFAULT_TARIFARIO, siniestro:null, factura:[], mensajes:[], resultados:null, recomendacion:null, tallerUser:null}; }
+
+// ---------------- Store: DB compartido con respaldo local si no hay capacidad db ----------------
+let dbCap=null, sampleCap=null, downloadsCap=null, USE_DB=false;
+const LS_FALLBACK='auditor_fallback_v1', LS_SESSION='auditor_session_v1';
+let fallbackStore={accounts:{}, caso:defaultCaso()};
+let casoListenerCb=null;
+function loadFallback(){ try{ const raw=localStorage.getItem(LS_FALLBACK); if(raw) fallbackStore=JSON.parse(raw); }catch(e){} }
+function saveFallback(){ try{ localStorage.setItem(LS_FALLBACK, JSON.stringify(fallbackStore)); }catch(e){} }
+
+const Store = {
+  async getAccount(u){
+    if(USE_DB){ const s=await dbCap.doc('accounts/'+u).get(); return s.exists? s.data(): null; }
+    return fallbackStore.accounts[u]||null;
+  },
+  async setAccount(u,data){
+    if(USE_DB){ await dbCap.doc('accounts/'+u).set(data); return; }
+    fallbackStore.accounts[u]=data; saveFallback();
+  },
+  async updateAccount(u,partial){
+    if(USE_DB){ await dbCap.doc('accounts/'+u).update(partial); return; }
+    fallbackStore.accounts[u]={...(fallbackStore.accounts[u]||{}),...partial}; saveFallback();
+  },
+  subscribeCaso(cb){
+    casoListenerCb=cb;
+    if(USE_DB){ return dbCap.doc('casos/actual').onSnapshot(snap=>cb(snap.exists?snap.data():null), e=>console.error(e)); }
+    cb(fallbackStore.caso); return ()=>{ casoListenerCb=null; };
+  },
+  async setCaso(data){
+    if(USE_DB){ await dbCap.doc('casos/actual').set(data); return; }
+    fallbackStore.caso=data; saveFallback(); if(casoListenerCb) casoListenerCb(fallbackStore.caso);
+  },
+  async updateCaso(partial){
+    if(USE_DB){ await dbCap.doc('casos/actual').update(partial); return; }
+    fallbackStore.caso={...fallbackStore.caso,...partial}; saveFallback(); if(casoListenerCb) casoListenerCb(fallbackStore.caso);
+  }
+};
+
+// ---------------- Estado de la app ----------------
+let currentUser=null, pendingUsername=null, casoData=null, facturaDraft=[], unsubCaso=null;
+
+function persistSession(){ try{ localStorage.setItem(LS_SESSION, JSON.stringify(currentUser)); }catch(e){} }
+function clearSession(){ try{ localStorage.removeItem(LS_SESSION); }catch(e){} }
+
+function showAuth(){ $('authWrap').classList.remove('hidden'); $('appWrap').classList.add('hidden'); }
+function showLoginTab(){ $('tabLogin').classList.add('active'); $('tabRegister').classList.remove('active'); $('loginForm').classList.remove('hidden'); $('registerForm').classList.add('hidden'); $('confirmForm').classList.add('hidden'); }
+function showRegisterTab(){ $('tabRegister').classList.add('active'); $('tabLogin').classList.remove('active'); $('registerForm').classList.remove('hidden'); $('loginForm').classList.add('hidden'); $('confirmForm').classList.add('hidden'); }
+function showConfirmForm(){ $('loginForm').classList.add('hidden'); $('registerForm').classList.add('hidden'); $('confirmForm').classList.remove('hidden'); }
+
+function showApp(){
+  $('authWrap').classList.add('hidden'); $('appWrap').classList.remove('hidden');
+  $('whoName').textContent=currentUser.username;
+  $('whoRole').textContent=(currentUser.role==='taller'?'Taller — ':'Aseguradora — ')+currentUser.org;
+  if(unsubCaso) unsubCaso();
+  unsubCaso = Store.subscribeCaso(async data=>{
+    if(!data){ await Store.setCaso(defaultCaso()); return; }
+    casoData=data; renderApp();
+  });
+}
+
+// ---------------- Registro / login ----------------
+$('tabLogin').addEventListener('click', showLoginTab);
+$('tabRegister').addEventListener('click', showRegisterTab);
+$('goRegister').addEventListener('click', showRegisterTab);
+$('goLogin').addEventListener('click', showLoginTab);
+
+$('btnRegister').addEventListener('click', async ()=>{
+  clearErr('registerError');
+  const role=$('regRole').value, org=$('regOrg').value.trim(), user=$('regUser').value.trim().toLowerCase(), pass=$('regPass').value, pass2=$('regPass2').value;
+  if(!org||!user||!pass) return showErr('registerError','Completa todos los campos.');
+  if(pass!==pass2) return showErr('registerError','Las contraseñas no coinciden.');
+  if(pass.length<4) return showErr('registerError','La contraseña debe tener al menos 4 caracteres.');
+  const existing = await Store.getAccount(user);
+  if(existing) return showErr('registerError','Ese usuario ya existe.');
+  const salt=randomHex(8), hash=await sha256Hex(salt+pass), code=genCode();
+  await Store.setAccount(user, {salt,hash,role,org,confirmed:false,code,createdAt:Date.now()});
+  pendingUsername=user; $('confirmCodeShown').textContent=code; showConfirmForm();
+});
+
+$('btnConfirm').addEventListener('click', async ()=>{
+  clearErr('confirmError');
+  const code=$('confirmCodeInput').value.trim();
+  const acc = await Store.getAccount(pendingUsername);
+  if(!acc) return showErr('confirmError','Cuenta no encontrada.');
+  if(code!==acc.code) return showErr('confirmError','Código incorrecto.');
+  await Store.updateAccount(pendingUsername, {confirmed:true});
+  currentUser={username:pendingUsername, role:acc.role, org:acc.org}; persistSession(); showApp();
+});
+
+$('btnLogin').addEventListener('click', async ()=>{
+  clearErr('loginError');
+  const user=$('loginUser').value.trim().toLowerCase(), pass=$('loginPass').value;
+  const acc = await Store.getAccount(user);
+  if(!acc) return showErr('loginError','Usuario no encontrado.');
+  const hash = await sha256Hex(acc.salt+pass);
+  if(hash!==acc.hash) return showErr('loginError','Contraseña incorrecta.');
+  if(!acc.confirmed){ pendingUsername=user; $('confirmCodeShown').textContent=acc.code; showConfirmForm(); return; }
+  currentUser={username:user, role:acc.role, org:acc.org}; persistSession(); showApp();
+});
+
+$('btnLogout').addEventListener('click', ()=>{
+  currentUser=null; clearSession(); if(unsubCaso) unsubCaso();
+  $('loginUser').value=''; $('loginPass').value=''; showLoginTab(); showAuth();
+});
+
+// ---------------- Render principal ----------------
+function renderApp(){
+  renderTarifarioTable();
+  const statusMap={preparando:'⏳ Preparando factura', enviada:'📨 Enviada, pendiente de auditoría', auditada:'✅ Auditada'};
+  $('statusPill').textContent = statusMap[casoData.estado]||casoData.estado;
+  const esTaller = currentUser.role==='taller', esAseguradora = currentUser.role==='aseguradora';
+  const auditado = casoData.estado==='auditada';
+
+  $('tallerFormSec').classList.toggle('hidden', !(esTaller && casoData.estado==='preparando'));
+  if(esTaller && casoData.estado==='preparando') fillFormDefaults();
+
+  const verLectura = casoData.estado!=='preparando';
+  $('facturaSec').classList.toggle('hidden', !verLectura);
+  if(verLectura) renderFacturaLectura(esTaller);
+
+  $('scopeSec').classList.toggle('hidden', !(esAseguradora && casoData.estado==='enviada'));
+  if(esAseguradora && casoData.estado==='enviada') renderScopeForm();
+
+  ['resultados','detalleSec','iaSec'].forEach(id=>$(id).classList.toggle('hidden', !(auditado && esAseguradora)));
+  if(auditado && esAseguradora){ renderResultadosView(casoData.resultados); renderIA(); $('btnDescargar').disabled=!downloadsCap; }
+
+  $('respuestaTallerSec').classList.toggle('hidden', !(esTaller && auditado));
+  if(esTaller && auditado) renderRespuestaTaller();
+
+  $('chatSec').classList.toggle('hidden', casoData.estado==='preparando');
+  if(casoData.estado!=='preparando') renderChat();
+}
+
+function renderTarifarioTable(){
+  $('tablaTarifario').innerHTML = '<tr><th>Código</th><th>Ítem</th><th>Categoría</th><th class="num">Precio máx.</th></tr>' +
+    casoData.tarifario.map(r=>`<tr><td>${r.id}</td><td>${r.nombre}</td><td>${r.cat}</td><td class="num">${fmt(r.max)}</td></tr>`).join('');
+  $('tarifarioDatalist').innerHTML = casoData.tarifario.map(t=>`<option value="${t.nombre}">`).join('');
+}
+
+// ---------------- Formulario del taller ----------------
+function fillFormDefaults(){
+  if(casoData.siniestro){
+    $('fNumero').value=casoData.siniestro.numero; $('fVehiculo').value=casoData.siniestro.vehiculo;
+    $('fFecha').value=casoData.siniestro.fecha; $('fDano').value=casoData.siniestro.dano;
+  } else if(!$('fNumero').value){
+    $('fNumero').value='SIN-2026-'+Math.floor(1000+Math.random()*9000);
+  }
+  if(facturaDraft.length===0 && casoData.factura && casoData.factura.length){ facturaDraft = casoData.factura.map(x=>({...x})); }
+  renderDraftTable();
+}
+function renderDraftTable(){
+  $('tablaDraft').innerHTML = '<tr><th>Ítem</th><th class="num">Cant.</th><th class="num">Precio unit.</th><th>Factura</th><th></th></tr>' +
+    facturaDraft.map((r,i)=>`<tr><td>${r.nombre}</td><td class="num">${r.cant}</td><td class="num">${fmt(r.precio)}</td><td>${r.factura}</td><td><button class="secondary" data-i="${i}" onclick="quitarDraft(${i})">Quitar</button></td></tr>`).join('')
+    || '<tr><td colspan="5" class="note">Aún no has agregado ítems.</td></tr>';
+}
+window.quitarDraft = i=>{ facturaDraft.splice(i,1); renderDraftTable(); };
+
+$('btnAgregarItem').addEventListener('click', ()=>{
+  clearErr('facturaError');
+  const nombre=$('itemNombre').value.trim(), cant=parseFloat($('itemCant').value)||0, precio=parseFloat($('itemPrecio').value)||0, factura=$('itemFactura').value.trim()||'F-0001';
+  if(!nombre||cant<=0||precio<=0) return showErr('facturaError','Completa ítem, cantidad y precio unitario.');
+  const match = casoData.tarifario.find(t=>t.nombre.toLowerCase()===nombre.toLowerCase());
+  facturaDraft.push({refId: match?match.id:null, nombre, cant, precio, factura});
+  renderDraftTable();
+  $('itemNombre').value=''; $('itemCant').value=1; $('itemPrecio').value=''; $('itemFactura').value='';
+});
+
+$('btnEjemplo').addEventListener('click', ()=>{
+  $('fVehiculo').value='Toyota Corolla 2021 · Placa ABC-123';
+  $('fFecha').value=new Date().toISOString().slice(0,10);
+  $('fDano').value='Colisión frontal leve: daño en parachoques delantero, faro derecho y capó.';
+  const t=casoData.tarifario;
+  facturaDraft=[
+    {refId:t[0].id,nombre:t[0].nombre,cant:1,precio:t[0].max+45000,factura:'F-1001'},
+    {refId:t[1].id,nombre:t[1].nombre,cant:1,precio:t[1].max,factura:'F-1001'},
+    {refId:t[2].id,nombre:t[2].nombre,cant:1,precio:t[2].max,factura:'F-1001'},
+    {refId:t[3].id,nombre:t[3].nombre,cant:8,precio:t[3].max,factura:'F-1001'},
+    {refId:t[5].id,nombre:t[5].nombre,cant:1,precio:t[5].max,factura:'F-1001'},
+    {refId:t[5].id,nombre:t[5].nombre,cant:1,precio:t[5].max,factura:'F-1002'},
+  ];
+  renderDraftTable();
+});
+
+$('btnEnviar').addEventListener('click', async ()=>{
+  clearErr('facturaError');
+  const vehiculo=$('fVehiculo').value.trim(), fecha=$('fFecha').value, dano=$('fDano').value.trim(), numero=$('fNumero').value.trim();
+  if(!vehiculo||!fecha||!dano) return showErr('facturaError','Completa los datos del siniestro.');
+  if(facturaDraft.length===0) return showErr('facturaError','Agrega al menos un ítem a la factura.');
+  const siniestro={numero, vehiculo, fecha, dano};
+  await Store.updateCaso({siniestro, factura:[...facturaDraft], estado:'enviada', tallerUser:currentUser.username, resultados:null, recomendacion:null});
+  facturaDraft=[];
+});
+
+// ---------------- Vista de factura (lectura) ----------------
+function renderFacturaLectura(esTaller){
+  $('facturaTitle').textContent = esTaller ? 'Factura enviada a la aseguradora' : (casoData.estado==='enviada' ? 'Factura recibida — pendiente de auditoría' : 'Factura auditada');
+  const s=casoData.siniestro;
+  $('casoBox').innerHTML = `<div><span>Siniestro</span>${s.numero}</div><div><span>Vehículo</span>${s.vehiculo}</div><div><span>Fecha</span>${s.fecha}</div><div><span>Daño reportado</span>${s.dano}</div>`;
+  $('tablaFactura').innerHTML = '<tr><th>Factura</th><th>Ítem facturado</th><th class="num">Cant.</th><th class="num">Precio unit.</th><th class="num">Total</th></tr>' +
+    casoData.factura.map(r=>`<tr><td>${r.factura}</td><td>${r.nombre}</td><td class="num">${r.cant}</td><td class="num">${fmt(r.precio)}</td><td class="num">${fmt(r.cant*r.precio)}</td></tr>`).join('');
+}
+
+// ---------------- Alcance autorizado (aseguradora) ----------------
+function renderScopeForm(){
+  const facturaIds = new Set(casoData.factura.map(i=>i.refId).filter(Boolean));
+  $('scopeBox').innerHTML = casoData.tarifario.map(t=>{
+    const checked = facturaIds.has(t.id) ? 'checked' : '';
+    const cantsFacturadas = casoData.factura.filter(i=>i.refId===t.id).map(i=>i.cant);
+    const horas = t.cat==='Labor' ? `<input type="number" min="1" value="${Math.max(4,...cantsFacturadas,0)}" data-limite="${t.id}">` : '';
+    return `<div class="scope-item"><input type="checkbox" data-auth="${t.id}" ${checked}><span style="flex:1">${t.nombre}</span>${horas}</div>`;
+  }).join('');
+}
+
+$('btnEjecutarAuditoria').addEventListener('click', async ()=>{
+  const autorizados=[...document.querySelectorAll('#scopeBox input[data-auth]')].filter(c=>c.checked).map(c=>c.dataset.auth);
+  const limiteCantidad={};
+  document.querySelectorAll('#scopeBox input[data-limite]').forEach(i=>{ limiteCantidad[i.dataset.limite]=parseFloat(i.value)||1; });
+  const siniestro={...casoData.siniestro, autorizados, limiteCantidad};
+  const results = auditar(casoData.factura, casoData.tarifario, siniestro);
+  await Store.updateCaso({siniestro, estado:'auditada', resultados:results, recomendacion:null});
+  runAgentAnalysis(results, siniestro);
+});
+
+function auditar(items, tarifario, siniestro){
+  const seen=new Set();
+  return items.map(it=>{
+    const tarifa=tarifario.find(t=>t.id===it.refId);
+    const total=it.cant*it.precio;
+    let estado, motivo;
+    if(!tarifa){ estado='observado'; motivo='Sin referencia en el tarifario acordado'; }
+    else if(seen.has(it.refId)){ estado='rechazado'; motivo='Ítem duplicado: ya facturado antes en este siniestro'; }
+    else if(!siniestro.autorizados.includes(it.refId)){ estado='rechazado'; motivo='No fue autorizado por la aseguradora para este siniestro'; }
+    else{
+      const limite=siniestro.limiteCantidad?.[it.refId] ?? 1;
+      if(it.cant>limite){ estado='observado'; motivo=`Cantidad facturada (${it.cant}) supera lo autorizado (${limite})`; }
+      else if(it.precio>tarifa.max){
+        const pct=((it.precio-tarifa.max)/tarifa.max*100);
+        if(pct>15){ estado='rechazado'; motivo=`Precio ${pct.toFixed(0)}% sobre el máximo pactado (${fmt(tarifa.max)})`; }
+        else{ estado='observado'; motivo=`Precio levemente sobre tarifa (+${pct.toFixed(0)}%)`; }
+      } else { estado='aprobado'; motivo='Dentro de tarifa y autorizado para el siniestro'; }
+    }
+    seen.add(it.refId);
+    return {...it, total, estado, motivo, maxTarifa: tarifa?tarifa.max:null};
+  });
+}
+
+// ---------------- Resultados / IA / descarga ----------------
+function renderResultadosView(results){
+  const totalFacturado=results.reduce((s,r)=>s+r.total,0);
+  const totalAprobado=results.filter(r=>r.estado==='aprobado').reduce((s,r)=>s+r.total,0);
+  const counts={aprobado:0,observado:0,rechazado:0}; results.forEach(r=>counts[r.estado]++);
+  $('summaryBox').innerHTML = `
+    <div class="card"><span>Total facturado</span><b>${fmt(totalFacturado)}</b></div>
+    <div class="card"><span>Total en discrepancia</span><b>${fmt(totalFacturado-totalAprobado)}</b></div>
+    <div class="card"><span>Ítems aprobados</span><b>${counts.aprobado}</b></div>
+    <div class="card"><span>Observados / rechazados</span><b>${counts.observado} / ${counts.rechazado}</b></div>`;
+  $('tablaAuditoria').innerHTML = '<tr><th>Ítem</th><th class="num">Facturado</th><th class="num">Tarifa máx.</th><th>Estado</th><th>Motivo</th></tr>' +
+    results.map(r=>`<tr><td>${r.nombre}<div class="note" style="margin:0">${r.factura}</div></td><td class="num">${fmt(r.precio)} × ${r.cant}</td><td class="num">${r.maxTarifa?fmt(r.maxTarifa):'—'}</td><td><span class="pill ${r.estado}">${r.estado}</span></td><td>${r.motivo}</td></tr>`).join('');
+}
+
+function renderIA(){
+  const rec=casoData.recomendacion, box=$('iaBox');
+  if(!rec){ box.innerHTML='<span class="spinner">Analizando hallazgos…</span>'; return; }
+  if(rec.error){ box.innerHTML=`<p class="note" style="margin:0">${rec.error}</p>`; return; }
+  const recLabel={aprobar:'Aprobar la cuenta', aprobar_con_ajustes:'Aprobar con ajustes', revision_manual:'Enviar a revisión manual completa'}[rec.recomendacion]||rec.recomendacion;
+  box.innerHTML = `<p style="margin-top:0">${rec.resumen}</p>
+    ${(rec.hallazgos||[]).map(h=>`<div class="finding ${h.severidad}"><span class="fitem">${h.item}</span><span class="fsev">${h.severidad}</span><div>${h.justificacion}</div></div>`).join('')}
+    <div class="rec-box ${rec.recomendacion}"><b>Recomendación del agente:</b> ${recLabel}</div>`;
+}
+
+function renderRespuestaTaller(){
+  const problematicos=(casoData.resultados||[]).filter(r=>r.estado!=='aprobado');
+  let html = problematicos.length===0
+    ? '<p style="margin:0">La aseguradora no encontró observaciones. Factura aprobada en su totalidad.</p>'
+    : '<p>La aseguradora encontró observaciones en los siguientes ítems:</p>' + problematicos.map(r=>`<div class="finding ${r.estado==='rechazado'?'alta':'media'}"><span class="fitem">${r.nombre}</span><span class="fsev">${r.estado}</span><div>${r.motivo}</div></div>`).join('');
+  const rec=casoData.recomendacion;
+  if(rec && !rec.error){
+    const recLabel={aprobar:'Aprobar la cuenta', aprobar_con_ajustes:'Aprobar con ajustes', revision_manual:'Enviar a revisión manual completa'}[rec.recomendacion]||rec.recomendacion;
+    html += `<div class="rec-box ${rec.recomendacion}"><b>Decisión final:</b> ${recLabel}</div>`;
+  }
+  $('respuestaTallerBox').innerHTML = html;
+}
+
+async function runAgentAnalysis(results, siniestro){
+  if(!sampleCap){ await Store.updateCaso({recomendacion:{error:'El razonamiento con IA no está disponible en este visor. El detalle de reglas ya es completo por sí mismo.'}}); return; }
+  const prompt = `Eres el Auditor Agéntico de Facturación de Siniestros de una aseguradora. Ya se ejecutó un cruce automático de reglas entre la factura del taller, el tarifario acordado y el alcance autorizado por la aseguradora para este siniestro. Resultados fila por fila, en JSON: ${JSON.stringify(results)}. Contexto del siniestro: ${JSON.stringify(siniestro)}. Responde ÚNICAMENTE con JSON válido, sin backticks, con esta forma exacta: {"resumen":"2-3 frases con el veredicto general","hallazgos":[{"item":"nombre","severidad":"alta|media|baja","justificacion":"1-2 frases accionables"}],"recomendacion":"aprobar|aprobar_con_ajustes|revision_manual"}. Incluye en "hallazgos" solo ítems observados o rechazados, priorizados por severidad.`;
+  try{
+    const out = await sampleCap.json(prompt, {modelTier:'default'});
+    await Store.updateCaso({recomendacion: out});
+  }catch(err){
+    await Store.updateCaso({recomendacion:{error:'No se pudo completar el análisis con IA ('+(err.code||'error')+'). El detalle basado en reglas sigue siendo válido.'}});
+  }
+}
+
+$('btnDescargar').addEventListener('click', async ()=>{
+  if(!downloadsCap || !casoData.resultados) return;
+  const rows=[['Item','Factura','Cantidad','Precio unitario','Total','Tarifa maxima','Estado','Motivo']];
+  casoData.resultados.forEach(r=>rows.push([r.nombre,r.factura,r.cant,r.precio,r.total,r.maxTarifa??'',r.estado,r.motivo]));
+  const csv = rows.map(row=>row.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  try{ await downloadsCap.save({filename:`auditoria-${casoData.siniestro.numero}.csv`, data: csv}); }catch(e){}
+});
+
+// ---------------- Corregir y reenviar ----------------
+$('btnCorregir').addEventListener('click', async ()=>{
+  facturaDraft = casoData.factura.map(x=>({...x}));
+  await Store.updateCaso({estado:'preparando'});
+});
+
+// ---------------- Mensajería ----------------
+function renderChat(){
+  const msgs=casoData.mensajes||[];
+  $('msgList').innerHTML = msgs.length ? msgs.map(m=>`<div class="msg-item"><span class="who">${m.rol==='taller'?'🔧':'🛡️'} ${escapeHtml(m.de)}</span><span class="ts">${new Date(m.ts).toLocaleString('es-CO')}</span><div>${escapeHtml(m.texto)}</div></div>`).join('') : '<p class="note" style="margin:0">Sin mensajes todavía.</p>';
+  $('msgList').scrollTop = $('msgList').scrollHeight;
+}
+$('btnEnviarMsg').addEventListener('click', async ()=>{
+  const texto=$('msgInput').value.trim();
+  if(!texto) return;
+  const mensajes=[...(casoData.mensajes||[]), {de:currentUser.username, rol:currentUser.role, texto, ts:Date.now()}];
+  await Store.updateCaso({mensajes});
+  $('msgInput').value='';
+});
+
+// ---------------- Nuevo caso ----------------
+$('btnNuevoCaso').addEventListener('click', async ()=>{
+  facturaDraft=[]; $('fNumero').value='';
+  await Store.setCaso(defaultCaso());
+});
+
+// ---------------- Arranque ----------------
+(async function init(){
+  try{ dbCap = await claude.use('db'); }catch(e){ dbCap=null; }
+  USE_DB=!!dbCap; if(!USE_DB) loadFallback();
+  try{ sampleCap = await claude.use('sample'); }catch(e){ sampleCap=null; }
+  try{ downloadsCap = await claude.use('downloads'); }catch(e){ downloadsCap=null; }
+  try{
+    const raw=localStorage.getItem(LS_SESSION);
+    if(raw){ currentUser=JSON.parse(raw); showApp(); return; }
+  }catch(e){}
+  showAuth();
+})();
+</script>
+</body>
+</html>
